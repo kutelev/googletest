@@ -260,6 +260,10 @@ static int NormalExitStatus(int exit_code) {
 static int KilledExitStatus(int signum) {
   pid_t child_pid = fork();
   if (child_pid == 0) {
+    // Force a default signal handler to be used in a child process.
+    // Otherwise a signal will be caught and this will prevent the child process
+    // from abnormal termination.
+    signal(signum, SIG_DFL);
     raise(signum);
     _exit(1);
   }

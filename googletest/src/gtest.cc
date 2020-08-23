@@ -141,6 +141,11 @@
 #include "absl/strings/str_cat.h"
 #endif  // GTEST_HAS_ABSL
 
+#if GTEST_HAS_SIGNAL_HANDLING
+#include <csignal>
+#include <csetjmp>
+#endif
+
 namespace testing {
 
 using internal::CountIf;
@@ -2556,6 +2561,18 @@ static std::string* FormatSehExceptionMessage(DWORD exception_code,
 
 #endif  // GTEST_HAS_SEH
 
+#if GTEST_HAS_SIGNAL_HANDLING
+
+static std::string FormatSignalMessage(int signum, const char* location) {
+  Message message;
+  message << "Signal \"" << strsignal(signum) << "\" received in " << location
+          << ".";
+
+  return std::string(message.GetString());
+}
+
+#endif  // GTEST_HAS_SIGNAL_HANDLING
+
 namespace internal {
 
 #if GTEST_HAS_EXCEPTIONS
@@ -2583,6 +2600,45 @@ GoogleTestFailureException::GoogleTestFailureException(
 
 #endif  // GTEST_HAS_EXCEPTIONS
 
+#if GTEST_HAS_SIGNAL_HANDLING
+
+struct ExecutionContext;
+static ThreadLocal<ExecutionContext*> g_execution_context;
+
+struct ExecutionContext {
+  ExecutionContext() { g_execution_context.set(this); }
+  ~ExecutionContext() { g_execution_context.set(nullptr); }
+
+  jmp_buf context{};
+  int signum{};
+};
+
+static void PosixSignalHandler(int signum) {
+  // Effective execution context is not nullptr only when a test body is being
+  // executed in a main thread in a context of a parent process.
+  //
+  // We have no return point if a hardware exception happens not in a main
+  // thread.
+  //
+  // In case of death tests a test body is executed in a fork, invoke a default
+  // signal handler if a hardware exception happens in a context of a forked
+  // process.
+  if (g_execution_context.get() && !testing::internal::InDeathTestChild()) {
+    sigset_t signals;
+    sigemptyset(&signals);
+    sigaddset(&signals, signum); // NOLINT
+    sigprocmask(SIG_UNBLOCK, &signals, nullptr);
+    g_execution_context.get()->signum = signum;
+    longjmp(g_execution_context.get()->context, 0); // NOLINT
+  } else {
+    // Do not handle hardware exceptions which occur outside a test body.
+    signal(signum, SIG_DFL);
+    raise(signum);
+  }
+}
+
+#endif  // GTEST_HAS_SIGNAL_HANDLING
+
 // We put these helper functions in the internal namespace as IBM's xlC
 // compiler rejects the code if they were declared static.
 
@@ -2609,6 +2665,16 @@ Result HandleSehExceptionsInMethodIfSupported(
     delete exception_message;
     return static_cast<Result>(0);
   }
+#elif GTEST_HAS_SIGNAL_HANDLING
+  ExecutionContext execution_context;
+  g_execution_context.set(&execution_context);
+  if (setjmp(g_execution_context.get()->context)) { // NOLINT
+    internal::ReportFailureInUnknownLocation(
+        TestPartResult::kFatalFailure,
+        FormatSignalMessage(execution_context.signum, location));
+    return static_cast<Result>(0);
+  }
+  return (object->*method)();
 #else
   (void)location;
   return (object->*method)();
@@ -6508,6 +6574,21 @@ void InitGoogleTestImpl(int* argc, CharType** argv) {
 #if GTEST_HAS_ABSL
   absl::InitializeSymbolizer(g_argvs[0].c_str());
 #endif  // GTEST_HAS_ABSL
+
+#if GTEST_HAS_SIGNAL_HANDLING
+  struct sigaction signal_action {};
+  sigemptyset(&signal_action.sa_mask);
+  // SA_ONSTACK forces a signal handler to be invoked on an alternative stack,
+  // it allows the signal handler to do its job even under stack overflow
+  // conditions.
+  signal_action.sa_flags = SA_ONSTACK;
+  signal_action.sa_handler = PosixSignalHandler;
+
+  for (int signum : {SIGBUS, SIGFPE, SIGILL, SIGSEGV}) {
+    // Any other signal handlers are not expected to exist.
+    sigaction(signum, &signal_action, nullptr);
+  }
+#endif
 
   ParseGoogleTestFlagsOnly(argc, argv);
   GetUnitTestImpl()->PostFlagParsingInit();

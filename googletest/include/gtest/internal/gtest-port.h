@@ -745,6 +745,10 @@ typedef struct _RTL_CRITICAL_SECTION GTEST_CRITICAL_SECTION;
 
 #endif  // GTEST_HAS_SEH
 
+#ifndef GTEST_HAS_SIGNAL_HANDLING
+#define GTEST_HAS_SIGNAL_HANDLING (GTEST_OS_LINUX || GTEST_OS_MAC)
+#endif  // GTEST_HAS_SIGNAL_HANDLING
+
 #ifndef GTEST_IS_THREADSAFE
 
 #define GTEST_IS_THREADSAFE                                                 \
