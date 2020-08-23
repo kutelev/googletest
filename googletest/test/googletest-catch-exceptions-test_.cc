@@ -39,6 +39,8 @@
 
 #if GTEST_HAS_SEH
 # include <windows.h>
+#elif GTEST_HAS_SIGNAL_HANDLING
+# include <csignal>
 #endif
 
 #if GTEST_HAS_EXCEPTIONS
@@ -48,32 +50,40 @@
 
 using testing::Test;
 
+#if GTEST_HAS_SEH || GTEST_HAS_SIGNAL_HANDLING
+
+static void RaiseException() {
 #if GTEST_HAS_SEH
+  RaiseException(42, 0, 0, NULL);
+#elif GTEST_HAS_SIGNAL_HANDLING
+  raise(SIGSEGV);
+#endif
+}
 
 class SehExceptionInConstructorTest : public Test {
  public:
-  SehExceptionInConstructorTest() { RaiseException(42, 0, 0, NULL); }
+  SehExceptionInConstructorTest() { RaiseException(); }
 };
 
 TEST_F(SehExceptionInConstructorTest, ThrowsExceptionInConstructor) {}
 
 class SehExceptionInDestructorTest : public Test {
  public:
-  ~SehExceptionInDestructorTest() { RaiseException(42, 0, 0, NULL); }
+  ~SehExceptionInDestructorTest() { RaiseException(); }
 };
 
 TEST_F(SehExceptionInDestructorTest, ThrowsExceptionInDestructor) {}
 
 class SehExceptionInSetUpTestSuiteTest : public Test {
  public:
-  static void SetUpTestSuite() { RaiseException(42, 0, 0, NULL); }
+  static void SetUpTestSuite() { RaiseException(); }
 };
 
 TEST_F(SehExceptionInSetUpTestSuiteTest, ThrowsExceptionInSetUpTestSuite) {}
 
 class SehExceptionInTearDownTestSuiteTest : public Test {
  public:
-  static void TearDownTestSuite() { RaiseException(42, 0, 0, NULL); }
+  static void TearDownTestSuite() { RaiseException(); }
 };
 
 TEST_F(SehExceptionInTearDownTestSuiteTest,
@@ -81,23 +91,23 @@ TEST_F(SehExceptionInTearDownTestSuiteTest,
 
 class SehExceptionInSetUpTest : public Test {
  protected:
-  virtual void SetUp() { RaiseException(42, 0, 0, NULL); }
+  virtual void SetUp() { RaiseException(); }
 };
 
 TEST_F(SehExceptionInSetUpTest, ThrowsExceptionInSetUp) {}
 
 class SehExceptionInTearDownTest : public Test {
  protected:
-  virtual void TearDown() { RaiseException(42, 0, 0, NULL); }
+  virtual void TearDown() { RaiseException(); }
 };
 
 TEST_F(SehExceptionInTearDownTest, ThrowsExceptionInTearDown) {}
 
 TEST(SehExceptionTest, ThrowsSehException) {
-  RaiseException(42, 0, 0, NULL);
+  RaiseException();
 }
 
-#endif  // GTEST_HAS_SEH
+#endif  // GTEST_HAS_SEH || GTEST_HAS_SIGNAL_HANDLING
 
 #if GTEST_HAS_EXCEPTIONS
 

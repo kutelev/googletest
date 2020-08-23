@@ -35,6 +35,7 @@ googletest-catch-exceptions-ex-test_ (programs written with
 Google Test) and verifies their output.
 """
 
+import os
 import gtest_test_utils
 
 # Constants.
@@ -42,6 +43,9 @@ FLAG_PREFIX = '--gtest_'
 LIST_TESTS_FLAG = FLAG_PREFIX + 'list_tests'
 NO_CATCH_EXCEPTIONS_FLAG = FLAG_PREFIX + 'catch_exceptions=0'
 FILTER_FLAG = FLAG_PREFIX + 'filter'
+IS_WINDOWS = os.name == 'nt'
+IS_LINUX = os.name == "posix" and os.uname()[0] == "Linux"
+IS_MAC = os.name == "posix" and os.uname()[0] == "Darwin"
 
 # Path to the googletest-catch-exceptions-ex-test_ binary, compiled with
 # exceptions enabled.
@@ -83,21 +87,28 @@ if SUPPORTS_SEH_EXCEPTIONS:
 
 
     def TestSehExceptions(self, test_output):
-      self.assert_('SEH exception with code 0x2a thrown '
-                   'in the test fixture\'s constructor'
+      if IS_WINDOWS:
+        EXPECTED_MESSAGE_PREFIX = 'SEH exception with code 0x2a thrown in'
+      elif IS_LINUX:
+        EXPECTED_MESSAGE_PREFIX = 'Signal "Segmentation fault" received in'
+      elif IS_MAC:
+        EXPECTED_MESSAGE_PREFIX = 'Signal "Segmentation fault: 11" received in'
+      else:
+        self.assert_(False)
+
+      self.assert_('%s the test fixture\'s constructor' % EXPECTED_MESSAGE_PREFIX
                    in test_output)
-      self.assert_('SEH exception with code 0x2a thrown '
-                   'in the test fixture\'s destructor'
+      self.assert_('%s the test fixture\'s destructor' % EXPECTED_MESSAGE_PREFIX
                    in test_output)
-      self.assert_('SEH exception with code 0x2a thrown in SetUpTestSuite()'
+      self.assert_('%s SetUpTestSuite()' % EXPECTED_MESSAGE_PREFIX
                    in test_output)
-      self.assert_('SEH exception with code 0x2a thrown in TearDownTestSuite()'
+      self.assert_('%s TearDownTestSuite()' % EXPECTED_MESSAGE_PREFIX
                    in test_output)
-      self.assert_('SEH exception with code 0x2a thrown in SetUp()'
+      self.assert_('%s SetUp()' % EXPECTED_MESSAGE_PREFIX
                    in test_output)
-      self.assert_('SEH exception with code 0x2a thrown in TearDown()'
+      self.assert_('%s TearDown()' % EXPECTED_MESSAGE_PREFIX
                    in test_output)
-      self.assert_('SEH exception with code 0x2a thrown in the test body'
+      self.assert_('%s the test body' % EXPECTED_MESSAGE_PREFIX
                    in test_output)
 
     def testCatchesSehExceptionsWithCxxExceptionsEnabled(self):
